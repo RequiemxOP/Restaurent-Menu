@@ -1,0 +1,23 @@
+{
+  "name": "restaurent-menu",
+  "version": "1.0.0",
+  "description": "home page , easy to run\r <img width=\"1296\" height=\"736\" alt=\"image\" src=\"https://github.com/user-attachments/assets/6eda9b26-4afb-4fb9-96b0-69d2806a582d\" />",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RequiemxOP/Restaurent-Menu.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RequiemxOP/Restaurent-Menu/issues"
+  },
+  "homepage": "https://github.com/RequiemxOP/Restaurent-Menu#readme",
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.6"
+  }
+}

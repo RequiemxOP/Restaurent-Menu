@@ -234,9 +234,8 @@
 
             <p class="label-2 section-subtitle slider-reveal">Tradational & Hygine</p>
 
-            <h1 class="display-1 hero-title slider-reveal">
-              For the love of <br>
-              delicious food
+            <h1 class="display-1 hero-title slider-reveal" data-pretext="hero-1">
+              For the love of delicious food
             </h1>
 
             <p class="body-2 hero-text slider-reveal">
@@ -259,9 +258,8 @@
 
             <p class="label-2 section-subtitle slider-reveal">delightful experience</p>
 
-            <h1 class="display-1 hero-title slider-reveal">
-              Flavors Inspired by <br>
-              the Seasons
+            <h1 class="display-1 hero-title slider-reveal" data-pretext="hero-2">
+              Flavors Inspired by the Seasons
             </h1>
 
             <p class="body-2 hero-text slider-reveal">
@@ -284,9 +282,8 @@
 
             <p class="label-2 section-subtitle slider-reveal">amazing & delicious</p>
 
-            <h1 class="display-1 hero-title slider-reveal">
-              Where every flavor <br>
-              tells a story
+            <h1 class="display-1 hero-title slider-reveal" data-pretext="hero-3">
+              Where every flavor tells a story
             </h1>
 
             <p class="body-2 hero-text slider-reveal">
@@ -743,7 +740,7 @@
 
           <div class="quote">”</div>
 
-          <p class="headline-2 testi-text">
+          <p class="headline-2 testi-text" data-pretext="testimonial">
             I wanted to thank you for inviting me down for that amazing dinner the other night. The food was
             extraordinary.
           </p>
@@ -1212,6 +1209,14 @@
     - custom js link
   -->
   <script src="./assets/js/script.js"></script>
+
+  <!--
+    - Pretext text layout engine integration
+      Replaces browser's default text wrapping on key elements with
+      pixel-accurate line layout computed by @chenglou/pretext.
+      Uses ES module imports (node_modules path served statically).
+  -->
+  <script type="module" src="./assets/js/pretextIntegration.js"></script>
 
   <!-- 
     - ionicon link
