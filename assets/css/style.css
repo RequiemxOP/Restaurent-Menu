@@ -2141,3 +2141,119 @@ textarea.input-field {
   }
 
 }
+
+
+
+/*-----------------------------------*\
+  #PRETEXT INTEGRATION
+  @chenglou/pretext text layout engine
+  ─────────────────────────────────────
+  Elements managed by Pretext have their
+  natural text made transparent and an
+  absolutely-positioned .pretext-wrapper
+  injected as a sibling overlay.
+  Each line is a .pretext-line <span>.
+\*-----------------------------------*/
+
+/**
+ * Host element must be position:relative so the wrapper
+ * can sit on top. The JS also sets this inline, but
+ * the CSS declaration acts as a reliable fallback.
+ */
+[data-pretext] {
+  position: relative;
+  overflow: visible;
+}
+
+/**
+ * The overlay wrapper that holds all line spans.
+ * aria-hidden="true" is set in JS, so it is invisible
+ * to screen readers (the original transparent text node
+ * still carries the accessible content).
+ */
+.pretext-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  /* inherit colour + font from the host element */
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+}
+
+/**
+ * Individual line spans.
+ * white-space:nowrap prevents the browser from re-wrapping
+ * the already-split lines inside the absolute container.
+ */
+.pretext-line {
+  display: block;
+  position: absolute;
+  left: 0;
+  white-space: nowrap;
+  color: inherit;
+  font: inherit;
+}
+
+/**
+ * Debug line-boxes drawn when the toggle is ON.
+ */
+.pretext-debug-box {
+  position: absolute;
+  left: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255, 120, 0, 0.7);
+  background-color: rgba(255, 140, 0, 0.08);
+  box-sizing: border-box;
+  transition: opacity 0.2s ease;
+}
+
+/**
+ * Testimonial quote: ensure the element can grow tall
+ * enough to contain absolutely-positioned lines.
+ */
+.testi-text[data-pretext] {
+  min-height: 1.4em;
+}
+
+/**
+ * Hero titles: the original uses color:var(--white), which
+ * becomes transparent when Pretext takes over.  The wrapper
+ * re-inherits it via `color:inherit` above.
+ */
+.hero-title[data-pretext] {
+  min-height: 1em;
+}
+
+/**
+ * Section text demo target
+ */
+.section-text[data-pretext] {
+  min-height: 1.5em;
+}
+
+/**
+ * Pretext banner (top strip)
+ */
+#pretext-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: 5px 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/**
+ * Floating debug toggle button
+ */
+#pretext-debug-toggle {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9999;
+}
