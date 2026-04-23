@@ -538,7 +538,7 @@
 
           <h2 class="headline-1 section-title text-center">Delicious Menu</h2>
 
-          <ul class="grid-list">
+          <ul class="grid-list" id="menu-list">
 
             <li>
               <div class="menu-card hover:card">
@@ -1223,6 +1223,29 @@
   -->
   <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
   <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+
+  <link rel="stylesheet" href="./assets/css/ai-chat.css">
+  <div class="ai-chat-widget">
+    <button class="ai-chat-button" id="ai-chat-toggle">
+      <ion-icon name="chatbubbles-outline"></ion-icon>
+      <span class="tooltip">UI Pro Antigravity AI</span>
+    </button>
+    <div class="ai-chat-box" id="ai-chat-box">
+      <div class="ai-chat-header">
+        <h4>UI Pro Antigravity AI</h4>
+        <button id="ai-chat-close"><ion-icon name="close-outline"></ion-icon></button>
+      </div>
+      <div class="ai-chat-body" id="ai-chat-messages">
+        <div class="message ai">Hi! I am the Antigravity AI assistant. How can I help you?</div>
+      </div>
+      <div class="ai-chat-input">
+        <input type="text" id="ai-chat-input" placeholder="Ask about reservations or menu..." />
+        <button id="ai-chat-send"><ion-icon name="send-outline"></ion-icon></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./assets/js/backend.js"></script>
 
 </body>
 
