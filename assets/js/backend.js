@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Start Realtime SSE Event Listener
   const startSSE = () => {
-    const evtSource = new EventSource('/api/events');
+    const evtSource = new EventSource('/api/events?token=secret123');
     evtSource.onmessage = function(event) {
       if (!event.data) return;
       try {

@@ -48,6 +48,11 @@ type ChatResponse struct {
 	Timestamp string `json:"timestamp"`
 }
 
+type SSEEvent struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
 // ==========================================
 // 2. CONCURRENT DATA STORES (IN-MEMORY)
 // ==========================================
@@ -193,23 +198,24 @@ func (broker *SSEBroker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	rw.Header().Set("Content-Type", "text/event-stream")
 	rw.Header().Set("Cache-Control", "no-cache")
 	rw.Header().Set("Connection", "keep-alive")
-	rw.Header().Set("Access-Control-Allow-Origin", "*")
+	rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
 
 	messageChan := make(chan []byte)
 	broker.newClients <- messageChan
+	
+	// Ensure we only close exactly once when ServeHTTP exits
 	defer func() {
 		broker.closingClients <- messageChan
 	}()
 
-	notify := req.Context().Done()
-	go func() {
-		<-notify
-		broker.closingClients <- messageChan
-	}()
-
 	for {
-		fmt.Fprintf(rw, "data: %s\n\n", <-messageChan)
-		flusher.Flush()
+		select {
+		case <-req.Context().Done():
+			return
+		case msg := <-messageChan:
+			fmt.Fprintf(rw, "data: %s\n\n", msg)
+			flusher.Flush()
+		}
 	}
 }
 
@@ -244,10 +250,30 @@ func RateLimiterMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 func CORSHeaders(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
 		if r.Method == "OPTIONS" {
+			return
+		}
+		next(w, r)
+	}
+}
+
+func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Mock token auth (checking query string or Authorization header)
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			reqToken := r.Header.Get("Authorization")
+			splitToken := strings.Split(reqToken, "Bearer ")
+			if len(splitToken) == 2 {
+				token = splitToken[1]
+			}
+		}
+		
+		if token != "secret123" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next(w, r)
@@ -279,8 +305,12 @@ func (app *AppConfig) HandleReservation(w http.ResponseWriter, r *http.Request) 
 	created := app.ResStore.Create(res)
 
 	// Broadcast successful reservation over Server-Sent Events to connected clients
-	msg := fmt.Sprintf(`{"type":"RESERVATION_UPDATE", "message":"New reservation confirmed for %s!"}`, created.Name)
-	app.Broker.Notifier <- []byte(msg)
+	event := SSEEvent{
+		Type:    "RESERVATION_UPDATE",
+		Message: fmt.Sprintf("New reservation confirmed for %s!", created.Name),
+	}
+	msg, _ := json.Marshal(event)
+	app.Broker.Notifier <- msg
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(created)
@@ -365,7 +395,11 @@ func startKitchenSimulator(broker *SSEBroker) {
 		time.Sleep(time.Duration(rand.Intn(15)+10) * time.Second) // Random 10-25 seconds
 		dish := dishes[rand.Intn(len(dishes))]
 		status := statuses[rand.Intn(len(statuses))]
-		msg := []byte(fmt.Sprintf(`{"type":"KITCHEN_UPDATE", "message":"Chef %s %s!"}`, status, dish))
+		event := SSEEvent{
+			Type:    "KITCHEN_UPDATE",
+			Message: fmt.Sprintf("Chef %s %s!", status, dish),
+		}
+		msg, _ := json.Marshal(event)
 		broker.Notifier <- msg
 	}
 }
@@ -390,17 +424,28 @@ func main() {
 	// Set up multiplexer
 	mux := http.NewServeMux()
 
-	// Static file serving mapped to root
-	fs := http.FileServer(http.Dir("./"))
-	mux.Handle("/", fs)
+	// Static file serving mapped exclusively to expected folders
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("./assets/"))))
+	mux.Handle("/node_modules/", http.StripPrefix("/node_modules/", http.FileServer(http.Dir("./node_modules/"))))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			http.ServeFile(w, r, "./index.html")
+			return
+		}
+		if r.URL.Path == "/favicon.svg" {
+			http.ServeFile(w, r, "./favicon.svg")
+			return
+		}
+		http.NotFound(w, r)
+	})
 
 	// API Endpoints using Complex Middleware Chain
 	mux.HandleFunc("/api/menu", Chain(app.HandleMenu, CORSHeaders, LoggingMiddleware, RateLimiterMiddleware))
-	mux.HandleFunc("/api/reservation", Chain(app.HandleReservation, CORSHeaders, LoggingMiddleware))
+	mux.HandleFunc("/api/reservation", Chain(app.HandleReservation, CORSHeaders, LoggingMiddleware, AuthMiddleware))
 	mux.HandleFunc("/api/chat", Chain(app.HandleChat, CORSHeaders, LoggingMiddleware))
 	
-	// Server-Sent Events Endpoint
-	mux.Handle("/api/events", app.Broker)
+	// Server-Sent Events Endpoint (Protected)
+	mux.Handle("/api/events", Chain(app.Broker.ServeHTTP, CORSHeaders, LoggingMiddleware, AuthMiddleware))
 
 	// HTTP Server config with Graceful Shutdown rules
 	server := &http.Server{
