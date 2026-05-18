@@ -1,0 +1,280 @@
+/* Material Design 3 refresh layer */
+:root {
+  color-scheme: dark;
+  --md-sys-color-primary: #b9ddff;
+  --md-sys-color-on-primary: #003354;
+  --md-sys-color-primary-container: #1f4d6e;
+  --md-sys-color-on-primary-container: #d3ebff;
+  --md-sys-color-secondary: #ffd7e2;
+  --md-sys-color-tertiary: #cdeecf;
+  --md-sys-color-background: #111318;
+  --md-sys-color-on-background: #e4e2e8;
+  --md-sys-color-surface: #111318;
+  --md-sys-color-surface-container-low: #1a1c21;
+  --md-sys-color-surface-container: #22252b;
+  --md-sys-color-surface-container-high: #2d3037;
+  --md-sys-color-on-surface: #f0eef4;
+  --md-sys-color-on-surface-variant: #c7c6d0;
+  --md-sys-color-outline: #9296a2;
+  --md-sys-color-error: #ffb4ab;
+  --md-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.18);
+  --md-elevation-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.18);
+  --md-elevation-3: 0 8px 24px rgba(0, 0, 0, 0.32);
+  --md-shape-small: 8px;
+  --md-shape-medium: 12px;
+  --md-shape-large: 20px;
+  --md-shape-extra-large: 28px;
+  --gold-crayola: var(--md-sys-color-primary);
+  --quick-silver: var(--md-sys-color-on-surface-variant);
+  --smoky-black-1: var(--md-sys-color-background);
+  --smoky-black-2: var(--md-sys-color-surface-container-low);
+  --smoky-black-3: var(--md-sys-color-surface-container);
+  --eerie-black-1: var(--md-sys-color-background);
+  --eerie-black-2: var(--md-sys-color-surface-container);
+  --eerie-black-3: var(--md-sys-color-surface-container-high);
+  --eerie-black-4: var(--md-sys-color-surface-container-high);
+  --white: var(--md-sys-color-on-surface);
+  --radius-24: var(--md-shape-large);
+}
+
+body {
+  background: linear-gradient(180deg, #171a20 0%, var(--md-sys-color-background) 36rem);
+}
+
+.lucide,
+[data-lucide] {
+  display: block;
+  width: 1.2em;
+  height: 1.2em;
+  stroke-width: 1.9;
+}
+
+.header.active,
+.navbar,
+.reservation-form,
+.footer-brand,
+.ai-chat-box {
+  background-color: color-mix(in srgb, var(--md-sys-color-surface-container) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
+  box-shadow: var(--md-elevation-2);
+}
+
+.header.active {
+  backdrop-filter: blur(18px);
+}
+
+.btn {
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 28px;
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+  box-shadow: var(--md-elevation-1);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.btn::before {
+  display: none;
+}
+
+.btn .text,
+.btn .text-1,
+.btn .text-2,
+.btn:is(:hover, :focus-visible) .text-1,
+.btn:is(:hover, :focus-visible) .text-2 {
+  position: static;
+  transform: none;
+  min-width: 0;
+  color: inherit;
+}
+
+.btn .text-2 {
+  display: none;
+}
+
+.btn:is(:hover, :focus-visible) {
+  background: var(--md-sys-color-on-primary-container);
+  box-shadow: var(--md-elevation-2);
+}
+
+.btn-secondary {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.btn-text,
+.navbar-link,
+.section-subtitle,
+.menu-card .badge,
+.testi .profile-name {
+  letter-spacing: 0;
+}
+
+.service-card,
+.feature-card,
+.event-card,
+.menu-card {
+  border-radius: var(--md-shape-large);
+}
+
+.menu-card,
+.feature-card {
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 20%, transparent);
+  box-shadow: var(--md-elevation-1);
+}
+
+.menu-card {
+  padding: 16px;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.menu-card:is(:hover, :focus-within) {
+  border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+  box-shadow: var(--md-elevation-2);
+  transform: translateY(-2px);
+}
+
+.menu-card .badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-family: var(--fontFamily-dm_sans);
+  font-size: 1.2rem;
+  font-weight: var(--weight-bold);
+}
+
+.menu-card .menu-category-badge {
+  background: color-mix(in srgb, var(--md-sys-color-tertiary) 82%, transparent);
+  color: #12341c;
+}
+
+.menu-empty {
+  min-height: 80px;
+  display: grid;
+  place-items: center;
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 50%, transparent);
+  border-radius: var(--md-shape-large);
+}
+
+.input-field {
+  min-height: 56px;
+  border-radius: var(--md-shape-small);
+  border-color: color-mix(in srgb, var(--md-sys-color-outline) 55%, transparent);
+  background-color: var(--md-sys-color-surface-container-high);
+  caret-color: var(--md-sys-color-primary);
+}
+
+.input-field:focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+}
+
+.reservation-status {
+  min-height: 24px;
+  margin-block: -8px 16px;
+  color: var(--md-sys-color-secondary);
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+.reservation-status.error {
+  color: var(--md-sys-color-error);
+}
+
+.menu-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr);
+  gap: 12px;
+  margin-block: 0 32px;
+}
+
+.menu-tools .input-wrapper,
+.reservation-admin {
+  margin: 0;
+}
+
+.menu-stats {
+  align-self: center;
+  min-height: 24px;
+  color: var(--md-sys-color-tertiary);
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+.reservation-admin {
+  display: grid;
+  gap: 14px;
+  margin-block: 6px 18px;
+}
+
+.reservation-admin .btn {
+  max-width: 100%;
+  width: 100%;
+}
+
+.reservation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reservation-list:empty {
+  display: none;
+}
+
+.reservation-list li {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 25%, transparent);
+  border-radius: var(--md-shape-small);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  font-size: 1.35rem;
+  line-height: 1.4;
+}
+
+.reservation-list button {
+  justify-self: start;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--md-sys-color-error);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 50%, transparent);
+}
+
+.slider-btn,
+.back-top-btn,
+.ai-chat-button {
+  border-radius: 999px;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  box-shadow: var(--md-elevation-2);
+}
+
+.ai-chat-button {
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 32%, transparent);
+}
+
+@media (max-width: 574px) {
+  .menu-card {
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    gap: 14px;
+  }
+}
+
+@media (min-width: 768px) {
+  .menu-tools {
+    grid-template-columns: 1.3fr 0.9fr 0.9fr auto;
+    align-items: start;
+  }
+
+  .menu-stats {
+    text-align: end;
+    white-space: nowrap;
+  }
+}
