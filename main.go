@@ -16,6 +16,12 @@ import (
 	"time"
 )
 
+const (
+	defaultAddr    = ":8080"
+	maxJSONBody    = 1 << 20
+	menuCacheTTL   = time.Minute
+)
+
 // ==========================================
 // 1. DOMAIN MODELS & TYPES
 // ==========================================
@@ -53,6 +59,25 @@ type SSEEvent struct {
 	Message string `json:"message"`
 }
 
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+var menuItems = []MenuItem{
+	{1, "Greek Salad", 25.50, "Tomatoes, green bell pepper, sliced cucumber onion, olives, and feta cheese.", "./assets/images/menu-1.png", "Seasonal"},
+	{2, "Lasagne", 40.00, "Vegetables, cheeses, ground meats, tomato sauce, seasonings and spices.", "./assets/images/menu-2.png", ""},
+	{3, "Butternut Pumpkin", 10.00, "Roasted pumpkin, soft herbs, toasted seeds, and a silky house dressing.", "./assets/images/menu-3.png", ""},
+	{4, "Tokusen Wagyu", 39.00, "Char-grilled wagyu, seasonal vegetables, and a warm pepper jus.", "./assets/images/menu-4.png", "New"},
+	{5, "Olivas Rellenas", 25.00, "Avocados with crab meat, red onion, and stuffed bell pepper.", "./assets/images/menu-5.png", ""},
+	{6, "Opu Fish", 49.00, "Fresh fish with aromatic spices, vegetables, and a bright citrus finish.", "./assets/images/menu-6.png", ""},
+}
+
+var (
+	reservationIntentPattern = regexp.MustCompile(`.*(book|reserve|table).*`)
+	menuIntentPattern        = regexp.MustCompile(`.*(menu|food|eat).*`)
+	hoursIntentPattern       = regexp.MustCompile(`.*(hours|open|door).*`)
+)
+
 // ==========================================
 // 2. CONCURRENT DATA STORES (IN-MEMORY)
 // ==========================================
@@ -72,9 +97,10 @@ func NewReservationStore() *ReservationStore {
 func (s *ReservationStore) Create(r Reservation) Reservation {
 	s.Lock()
 	defer s.Unlock()
-	r.ID = fmt.Sprintf("RES-%d", time.Now().UnixNano())
+	now := time.Now().UTC()
+	r.ID = fmt.Sprintf("RES-%d", now.UnixNano())
 	r.Status = "PENDING"
-	r.CreatedAt = time.Now()
+	r.CreatedAt = now
 	s.reservations[r.ID] = r
 	return r
 }
@@ -119,12 +145,15 @@ func (c *TTLCache) Set(key string, value interface{}, duration time.Duration) {
 
 func (c *TTLCache) Get(key string) (interface{}, bool) {
 	c.RLock()
-	defer c.RUnlock()
 	item, found := c.items[key]
+	c.RUnlock()
 	if !found {
 		return nil, false
 	}
 	if time.Now().UnixNano() > item.Expiration {
+		c.Lock()
+		delete(c.items, key)
+		c.Unlock()
 		return nil, false
 	}
 	return item.Value, true
@@ -191,21 +220,21 @@ func (broker *SSEBroker) listen() {
 func (broker *SSEBroker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	flusher, ok := rw.(http.Flusher)
 	if !ok {
-		http.Error(rw, "Streaming unsupported!", http.StatusInternalServerError)
+		writeError(rw, http.StatusInternalServerError, "streaming unsupported")
 		return
 	}
 
 	rw.Header().Set("Content-Type", "text/event-stream")
 	rw.Header().Set("Cache-Control", "no-cache")
 	rw.Header().Set("Connection", "keep-alive")
-	rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
 
-	messageChan := make(chan []byte)
+	messageChan := make(chan []byte, 8)
 	broker.newClients <- messageChan
-	
+
 	// Ensure we only close exactly once when ServeHTTP exits
 	defer func() {
 		broker.closingClients <- messageChan
+		close(messageChan)
 	}()
 
 	for {
@@ -240,6 +269,24 @@ func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func MethodMiddleware(methods ...string) Middleware {
+	allowed := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		allowed[method] = struct{}{}
+	}
+
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := allowed[r.Method]; !ok {
+				w.Header().Set("Allow", strings.Join(methods, ", "))
+				writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+				return
+			}
+			next(w, r)
+		}
+	}
+}
+
 func RateLimiterMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	// A basic representation of a token bucket rate limiter logic could go here.
 	// For simplicity, we just pass through, but this demonstrates complex architectural hooks.
@@ -250,10 +297,19 @@ func RateLimiterMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 func CORSHeaders(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
+		origin := r.Header.Get("Origin")
+		allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
+		if allowedOrigin == "" {
+			allowedOrigin = "http://localhost:8080"
+		}
+		if origin == allowedOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
 		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next(w, r)
@@ -266,14 +322,18 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		token := r.URL.Query().Get("token")
 		if token == "" {
 			reqToken := r.Header.Get("Authorization")
-			splitToken := strings.Split(reqToken, "Bearer ")
-			if len(splitToken) == 2 {
-				token = splitToken[1]
+			if strings.HasPrefix(reqToken, "Bearer ") {
+				token = strings.TrimSpace(strings.TrimPrefix(reqToken, "Bearer "))
 			}
 		}
-		
-		if token != "secret123" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
+		expected := os.Getenv("API_TOKEN")
+		if expected == "" {
+			expected = "secret123"
+		}
+
+		if token != expected {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		next(w, r)
@@ -290,17 +350,65 @@ type AppConfig struct {
 	Broker    *SSEBroker
 }
 
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("json encode error: %v", err)
+	}
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, errorResponse{Error: message})
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(dst); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return false
+	}
+	return true
+}
+
+func validateReservation(res Reservation) error {
+	res.Name = strings.TrimSpace(res.Name)
+	res.Phone = strings.TrimSpace(res.Phone)
+
+	switch {
+	case res.Name == "":
+		return fmt.Errorf("name is required")
+	case len(res.Name) > 80:
+		return fmt.Errorf("name must be 80 characters or fewer")
+	case res.Phone == "":
+		return fmt.Errorf("phone number is required")
+	case len(res.Phone) > 32:
+		return fmt.Errorf("phone number is too long")
+	case res.Guests < 1 || res.Guests > 12:
+		return fmt.Errorf("guests must be between 1 and 12")
+	case res.Date.IsZero():
+		return fmt.Errorf("reservation date and time are required")
+	case res.Date.Before(time.Now().Add(-time.Minute)):
+		return fmt.Errorf("reservation date must be in the future")
+	}
+
+	return nil
+}
+
 // simulate heavy DB processing for Reservations
 func (app *AppConfig) HandleReservation(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	var res Reservation
-	if err := json.NewDecoder(r.Body).Decode(&res); err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+	if ok := decodeJSON(w, r, &res); !ok {
 		return
 	}
+	res.Name = strings.TrimSpace(res.Name)
+	res.Phone = strings.TrimSpace(res.Phone)
+	if err := validateReservation(res); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	res.Date = res.Date.UTC()
 
 	created := app.ResStore.Create(res)
 
@@ -312,8 +420,7 @@ func (app *AppConfig) HandleReservation(w http.ResponseWriter, r *http.Request) 
 	msg, _ := json.Marshal(event)
 	app.Broker.Notifier <- msg
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(created)
+	writeJSON(w, http.StatusCreated, created)
 }
 
 func (app *AppConfig) HandleMenu(w http.ResponseWriter, r *http.Request) {
@@ -324,22 +431,14 @@ func (app *AppConfig) HandleMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Simulate latency/DB Access
-	time.Sleep(200 * time.Millisecond)
-
-	items := []MenuItem{
-		{1, "Greek Salad", 25.50, "Tomatoes, green bell pepper, sliced cucumber onion, olives, and feta cheese.", "./assets/images/menu-1.png", "Seasonal"},
-		{2, "Lasagne", 40.00, "Vegetables, cheeses, ground meats, tomato sauce, seasonings and spices", "./assets/images/menu-2.png", ""},
-		{3, "Butternut Pumpkin", 10.00, "Typesetting industry lorem Lorem Ipsum is simply dummy text of the priand.", "./assets/images/menu-3.png", ""},
-		{4, "Tokusen Wagyu", 39.00, "Vegetables, cheeses, ground meats, tomato sauce, seasonings and spices.", "./assets/images/menu-4.png", "New"},
-		{5, "Olivas Rellenas", 25.00, "Avocados with crab meat, red onion, crab salad stuffed red bell pepper and green bell pepper.", "./assets/images/menu-5.png", ""},
-		{6, "Opu Fish", 49.00, "Vegetables, cheeses, ground meats, tomato sauce, seasonings and spices", "./assets/images/menu-6.png", ""},
+	bytes, err := json.Marshal(menuItems)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load menu")
+		return
 	}
-
-	bytes, _ := json.Marshal(items)
 	
 	// Set to cache for 1 minute
-	app.MenuCache.Set("full_menu", bytes, 1*time.Minute)
+	app.MenuCache.Set("full_menu", bytes, menuCacheTTL)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(bytes)
@@ -348,32 +447,38 @@ func (app *AppConfig) HandleMenu(w http.ResponseWriter, r *http.Request) {
 // Rule-based NLP Engine emulator
 func processAIChat(msg string) string {
 	lowerMsg := strings.ToLower(msg)
-	if match, _ := regexp.MatchString(`.*(book|reserve|table).*`, lowerMsg); match {
+	if reservationIntentPattern.MatchString(lowerMsg) {
 		return "I can certainly help you book a table! Let me know what date and time you're aiming for, or just fill out the online reservation form on our site."
 	}
-	if match, _ := regexp.MatchString(`.*(menu|food|eat).*`, lowerMsg); match {
+	if menuIntentPattern.MatchString(lowerMsg) {
 		return "Our menu includes exquisite dishes like Lobster Tortellini and Tokusen Wagyu beef. You can look at the Delicious Menu section above for details!"
 	}
-	if match, _ := regexp.MatchString(`.*(hours|open|door).*`, lowerMsg); match {
+	if hoursIntentPattern.MatchString(lowerMsg) {
 		return "We are open daily from 8.00 am to 10.00 pm. We'd love to see you!"
 	}
 
 	responses := []string{
-		"That's interesting! Antigravity UI is designed to wow your guests. How else can I help you?",
-		"I'm an advanced AI integrated into the Grilli UI Pro experience. What would you like to explore?",
+		"That's interesting! Grilli can help with menu picks, opening hours, and table bookings. How else can I help?",
+		"I'm the Grilli dining assistant. Ask me about dishes, reservations, or today's restaurant flow.",
 		"Our chefs are world-class. Would you be interested in making a reservation tonight?",
 	}
 	return responses[rand.Intn(len(responses))]
 }
 
 func (app *AppConfig) HandleChat(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	var req ChatRequest
+	if ok := decodeJSON(w, r, &req); !ok {
 		return
 	}
-
-	var req ChatRequest
-	json.NewDecoder(r.Body).Decode(&req)
+	req.Message = strings.TrimSpace(req.Message)
+	if req.Message == "" {
+		writeError(w, http.StatusBadRequest, "message is required")
+		return
+	}
+	if len(req.Message) > 500 {
+		writeError(w, http.StatusBadRequest, "message must be 500 characters or fewer")
+		return
+	}
 
 	reply := processAIChat(req.Message)
 
@@ -382,8 +487,7 @@ func (app *AppConfig) HandleChat(w http.ResponseWriter, r *http.Request) {
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	writeJSON(w, http.StatusOK, res)
 }
 
 // Live Mock Order Generator simulating Realtime Kitchen Activity
@@ -439,17 +543,48 @@ func main() {
 		http.NotFound(w, r)
 	})
 
-	// API Endpoints using Complex Middleware Chain
-	mux.HandleFunc("/api/menu", Chain(app.HandleMenu, CORSHeaders, LoggingMiddleware, RateLimiterMiddleware))
-	mux.HandleFunc("/api/reservation", Chain(app.HandleReservation, CORSHeaders, LoggingMiddleware, AuthMiddleware))
-	mux.HandleFunc("/api/chat", Chain(app.HandleChat, CORSHeaders, LoggingMiddleware))
-	
+	// API Endpoints using middleware chain
+	mux.HandleFunc("/api/menu", Chain(
+		app.HandleMenu,
+		CORSHeaders,
+		LoggingMiddleware,
+		RateLimiterMiddleware,
+		MethodMiddleware(http.MethodGet, http.MethodOptions),
+	))
+	mux.HandleFunc("/api/reservation", Chain(
+		app.HandleReservation,
+		CORSHeaders,
+		LoggingMiddleware,
+		MethodMiddleware(http.MethodPost, http.MethodOptions),
+		AuthMiddleware,
+	))
+	mux.HandleFunc("/api/chat", Chain(
+		app.HandleChat,
+		CORSHeaders,
+		LoggingMiddleware,
+		MethodMiddleware(http.MethodPost, http.MethodOptions),
+	))
+
 	// Server-Sent Events Endpoint (Protected)
-	mux.Handle("/api/events", Chain(app.Broker.ServeHTTP, CORSHeaders, LoggingMiddleware, AuthMiddleware))
+	mux.Handle("/api/events", Chain(
+		app.Broker.ServeHTTP,
+		CORSHeaders,
+		LoggingMiddleware,
+		MethodMiddleware(http.MethodGet, http.MethodOptions),
+		AuthMiddleware,
+	))
+
+	addr := os.Getenv("PORT")
+	if addr == "" {
+		addr = defaultAddr
+	}
+	if !strings.HasPrefix(addr, ":") {
+		addr = ":" + addr
+	}
 
 	// HTTP Server config with Graceful Shutdown rules
 	server := &http.Server{
-		Addr:         ":8080",
+		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -460,7 +595,7 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Println("Starting Advanced Server Architecture on :8080...")
+		log.Printf("Starting restaurant server on %s...", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Critical listen error: %v\n", err)
 		}

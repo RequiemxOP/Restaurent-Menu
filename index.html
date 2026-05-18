@@ -29,6 +29,7 @@
     - custom css link
   -->
   <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="stylesheet" href="./assets/css/material-theme.css">
 
   <!-- 
     - preload images
@@ -774,7 +775,7 @@
 
           <div class="form reservation-form bg-black-10">
 
-            <form action="" class="form-left">
+            <form action="" class="form-left" id="reservation-form">
 
               <h2 class="headline-1 text-center">Online Reservation</h2>
 
@@ -784,9 +785,9 @@
               </p>
 
               <div class="input-wrapper">
-                <input type="text" name="name" placeholder="Your Name" autocomplete="off" class="input-field">
+                <input type="text" name="name" placeholder="Your Name" autocomplete="name" class="input-field" required>
 
-                <input type="tel" name="phone" placeholder="Phone Number" autocomplete="off" class="input-field">
+                <input type="tel" name="phone" placeholder="Phone Number" autocomplete="tel" class="input-field" required>
               </div>
 
               <div class="input-wrapper">
@@ -794,7 +795,7 @@
                 <div class="icon-wrapper">
                   <ion-icon name="person-outline" aria-hidden="true"></ion-icon>
 
-                  <select name="person" class="input-field">
+                  <select name="guests" class="input-field" required>
                     <option value="1-person">1 Person</option>
                     <option value="2-person">2 Person</option>
                     <option value="3-person">3 Person</option>
@@ -810,7 +811,7 @@
                 <div class="icon-wrapper">
                   <ion-icon name="calendar-clear-outline" aria-hidden="true"></ion-icon>
 
-                  <input type="date" name="reservation-date" class="input-field">
+                  <input type="date" name="reservation-date" class="input-field" required>
 
                   <ion-icon name="chevron-down" aria-hidden="true"></ion-icon>
                 </div>
@@ -818,22 +819,22 @@
                 <div class="icon-wrapper">
                   <ion-icon name="time-outline" aria-hidden="true"></ion-icon>
 
-                  <select name="person" class="input-field">
-                    <option value="08:00am">08 : 00 am</option>
-                    <option value="09:00am">09 : 00 am</option>
-                    <option value="010:00am">10 : 00 am</option>
-                    <option value="011:00am">11 : 00 am</option>
-                    <option value="012:00am">12 : 00 am</option>
-                    <option value="01:00pm">01 : 00 pm</option>
-                    <option value="02:00pm">02 : 00 pm</option>
-                    <option value="03:00pm">03 : 00 pm</option>
-                    <option value="04:00pm">04 : 00 pm</option>
-                    <option value="05:00pm">05 : 00 pm</option>
-                    <option value="06:00pm">06 : 00 pm</option>
-                    <option value="07:00pm">07 : 00 pm</option>
-                    <option value="08:00pm">08 : 00 pm</option>
-                    <option value="09:00pm">09 : 00 pm</option>
-                    <option value="10:00pm">10 : 00 pm</option>
+                  <select name="reservation-time" class="input-field" required>
+                    <option value="08:00">08 : 00 am</option>
+                    <option value="09:00">09 : 00 am</option>
+                    <option value="10:00">10 : 00 am</option>
+                    <option value="11:00">11 : 00 am</option>
+                    <option value="12:00">12 : 00 pm</option>
+                    <option value="13:00">01 : 00 pm</option>
+                    <option value="14:00">02 : 00 pm</option>
+                    <option value="15:00">03 : 00 pm</option>
+                    <option value="16:00">04 : 00 pm</option>
+                    <option value="17:00">05 : 00 pm</option>
+                    <option value="18:00">06 : 00 pm</option>
+                    <option value="19:00">07 : 00 pm</option>
+                    <option value="20:00">08 : 00 pm</option>
+                    <option value="21:00">09 : 00 pm</option>
+                    <option value="22:00">10 : 00 pm</option>
                   </select>
 
                   <ion-icon name="chevron-down" aria-hidden="true"></ion-icon>
@@ -842,6 +843,8 @@
               </div>
 
               <textarea name="message" placeholder="Message" autocomplete="off" class="input-field"></textarea>
+
+              <p class="reservation-status" id="reservation-status" aria-live="polite"></p>
 
               <button type="submit" class="btn btn-secondary">
                 <span class="text text-1">Book A Table</span>
@@ -1219,24 +1222,24 @@
   <script type="module" src="./assets/js/pretextIntegration.js"></script>
 
   <!-- 
-    - ionicon link
+    - lucide icon link
   -->
-  <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
-  <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="./assets/js/icons.js"></script>
 
   <link rel="stylesheet" href="./assets/css/ai-chat.css">
   <div class="ai-chat-widget">
     <button class="ai-chat-button" id="ai-chat-toggle">
       <ion-icon name="chatbubbles-outline"></ion-icon>
-      <span class="tooltip">UI Pro Antigravity AI</span>
+      <span class="tooltip">Grilli assistant</span>
     </button>
     <div class="ai-chat-box" id="ai-chat-box">
       <div class="ai-chat-header">
-        <h4>UI Pro Antigravity AI</h4>
+        <h4>Grilli Assistant</h4>
         <button id="ai-chat-close"><ion-icon name="close-outline"></ion-icon></button>
       </div>
       <div class="ai-chat-body" id="ai-chat-messages">
-        <div class="message ai">Hi! I am the Antigravity AI assistant. How can I help you?</div>
+        <div class="message ai">Hi! I am the Grilli assistant. How can I help you?</div>
       </div>
       <div class="ai-chat-input">
         <input type="text" id="ai-chat-input" placeholder="Ask about reservations or menu..." />
