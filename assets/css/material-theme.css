@@ -145,6 +145,20 @@ body {
   font-weight: var(--weight-bold);
 }
 
+.menu-card .menu-category-badge {
+  background: color-mix(in srgb, var(--md-sys-color-tertiary) 82%, transparent);
+  color: #12341c;
+}
+
+.menu-empty {
+  min-height: 80px;
+  display: grid;
+  place-items: center;
+  color: var(--md-sys-color-on-surface-variant);
+  border: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 50%, transparent);
+  border-radius: var(--md-shape-large);
+}
+
 .input-field {
   min-height: 56px;
   border-radius: var(--md-shape-small);
@@ -170,6 +184,68 @@ body {
   color: var(--md-sys-color-error);
 }
 
+.menu-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr);
+  gap: 12px;
+  margin-block: 0 32px;
+}
+
+.menu-tools .input-wrapper,
+.reservation-admin {
+  margin: 0;
+}
+
+.menu-stats {
+  align-self: center;
+  min-height: 24px;
+  color: var(--md-sys-color-tertiary);
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+.reservation-admin {
+  display: grid;
+  gap: 14px;
+  margin-block: 6px 18px;
+}
+
+.reservation-admin .btn {
+  max-width: 100%;
+  width: 100%;
+}
+
+.reservation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reservation-list:empty {
+  display: none;
+}
+
+.reservation-list li {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 25%, transparent);
+  border-radius: var(--md-shape-small);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  font-size: 1.35rem;
+  line-height: 1.4;
+}
+
+.reservation-list button {
+  justify-self: start;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--md-sys-color-error);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 50%, transparent);
+}
+
 .slider-btn,
 .back-top-btn,
 .ai-chat-button {
@@ -188,5 +264,17 @@ body {
     display: grid;
     grid-template-columns: 88px 1fr;
     gap: 14px;
+  }
+}
+
+@media (min-width: 768px) {
+  .menu-tools {
+    grid-template-columns: 1.3fr 0.9fr 0.9fr auto;
+    align-items: start;
+  }
+
+  .menu-stats {
+    text-align: end;
+    white-space: nowrap;
   }
 }

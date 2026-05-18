@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const API_TOKEN = 'secret123';
+
   const requestJSON = async (url, options) => {
     const response = await fetch(url, options);
     const payload = await response.json().catch(() => ({}));
@@ -9,6 +11,10 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const menuList = document.getElementById('menu-list');
+  const menuSearch = document.getElementById('menu-search');
+  const menuCategory = document.getElementById('menu-category');
+  const menuSort = document.getElementById('menu-sort');
+  const menuStats = document.getElementById('menu-stats');
 
   const createMenuItem = (item) => {
     const li = document.createElement('li');
@@ -49,6 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
       titleWrapper.appendChild(badge);
     }
 
+    const category = document.createElement('span');
+    category.className = 'badge label-1 menu-category-badge';
+    category.textContent = item.category;
+    titleWrapper.appendChild(category);
+
     const price = document.createElement('span');
     price.className = 'span title-2';
     price.textContent = `$${Number(item.price).toFixed(2)}`;
@@ -64,14 +75,58 @@ document.addEventListener('DOMContentLoaded', () => {
     return li;
   };
 
-  if (menuList) {
-    requestJSON('/api/menu')
-      .then((items) => menuList.replaceChildren(...items.map(createMenuItem)))
-      .catch((err) => console.error('Menu API error:', err));
-  }
+  const loadStats = async () => {
+    if (!menuStats) return;
+    try {
+      const stats = await requestJSON('/api/stats');
+      menuStats.textContent = `${stats.menuItems} dishes · ${stats.pendingBookings} pending bookings`;
+    } catch (err) {
+      menuStats.textContent = '';
+      console.error('Stats API error:', err);
+    }
+  };
+
+  const loadMenu = async () => {
+    if (!menuList) return;
+    const params = new URLSearchParams();
+    if (menuSearch?.value.trim()) params.set('q', menuSearch.value.trim());
+    if (menuCategory?.value) params.set('category', menuCategory.value);
+    if (menuSort?.value) params.set('sort', menuSort.value);
+
+    try {
+      const items = await requestJSON(`/api/menu?${params.toString()}`);
+      if (items.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'menu-empty';
+        empty.textContent = 'No dishes match that search.';
+        menuList.replaceChildren(empty);
+        return;
+      }
+      menuList.replaceChildren(...items.map(createMenuItem));
+    } catch (err) {
+      console.error('Menu API error:', err);
+    }
+  };
+
+  const debounce = (fn, delay = 250) => {
+    let timer;
+    return (...args) => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => fn(...args), delay);
+    };
+  };
+
+  const debouncedLoadMenu = debounce(loadMenu);
+  menuSearch?.addEventListener('input', debouncedLoadMenu);
+  menuCategory?.addEventListener('change', loadMenu);
+  menuSort?.addEventListener('change', loadMenu);
+  loadMenu();
+  loadStats();
 
   const reservationForm = document.getElementById('reservation-form');
   const reservationStatus = document.getElementById('reservation-status');
+  const refreshReservationsBtn = document.getElementById('refresh-reservations');
+  const reservationList = document.getElementById('reservation-list');
   const reservationDate = reservationForm?.querySelector('input[name="reservation-date"]');
   if (reservationDate) {
     reservationDate.min = new Date().toISOString().slice(0, 10);
@@ -88,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     reservationStatus.classList.remove('error');
 
     try {
-      const created = await requestJSON('/api/reservation?token=secret123', {
+      const created = await requestJSON(`/api/reservation?token=${API_TOKEN}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,11 +156,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
       reservationStatus.textContent = `Reservation ${created.id} received. We will confirm it shortly.`;
       reservationForm.reset();
+      loadStats();
+      loadReservations();
     } catch (err) {
       reservationStatus.textContent = err.message || 'Could not send the reservation. Please try again.';
       reservationStatus.classList.add('error');
     }
   });
+
+  const renderReservations = (reservations) => {
+    if (!reservationList) return;
+    if (reservations.length === 0) {
+      const empty = document.createElement('li');
+      empty.textContent = 'No reservations yet.';
+      reservationList.replaceChildren(empty);
+      return;
+    }
+
+    reservationList.replaceChildren(...reservations.slice(0, 5).map((reservation) => {
+      const item = document.createElement('li');
+      const detail = document.createElement('span');
+      const date = new Date(reservation.date);
+      detail.textContent = `${reservation.name} · ${reservation.guests} guests · ${date.toLocaleString()} · ${reservation.status}`;
+      item.appendChild(detail);
+
+      if (reservation.status !== 'CANCELLED') {
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', async () => {
+          try {
+            await requestJSON(`/api/reservations/${reservation.id}?token=${API_TOKEN}`, { method: 'DELETE' });
+            await loadReservations();
+            await loadStats();
+          } catch (err) {
+            reservationStatus.textContent = err.message || 'Could not cancel reservation.';
+            reservationStatus.classList.add('error');
+          }
+        });
+        item.appendChild(cancel);
+      }
+
+      return item;
+    }));
+  };
+
+  async function loadReservations() {
+    if (!reservationList) return;
+    try {
+      const reservations = await requestJSON(`/api/reservations?token=${API_TOKEN}`);
+      renderReservations(reservations);
+    } catch (err) {
+      console.error('Reservations API error:', err);
+    }
+  }
+
+  refreshReservationsBtn?.addEventListener('click', loadReservations);
+  loadReservations();
 
   const toggleBtn = document.getElementById('ai-chat-toggle');
   const closeBtn = document.getElementById('ai-chat-close');

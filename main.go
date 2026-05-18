@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,6 +34,7 @@ type MenuItem struct {
 	Price       float64 `json:"price"`
 	Description string  `json:"description"`
 	Image       string  `json:"image"`
+	Category    string  `json:"category"`
 	Badge       string  `json:"badge,omitempty"`
 }
 
@@ -59,17 +62,31 @@ type SSEEvent struct {
 	Message string `json:"message"`
 }
 
+type AppStats struct {
+	MenuItems        int       `json:"menuItems"`
+	Reservations    int       `json:"reservations"`
+	PendingBookings int       `json:"pendingBookings"`
+	Cancelled       int       `json:"cancelled"`
+	StartedAt       time.Time `json:"startedAt"`
+	UptimeSeconds   int64     `json:"uptimeSeconds"`
+}
+
+type HealthResponse struct {
+	Status    string    `json:"status"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
 
 var menuItems = []MenuItem{
-	{1, "Greek Salad", 25.50, "Tomatoes, green bell pepper, sliced cucumber onion, olives, and feta cheese.", "./assets/images/menu-1.png", "Seasonal"},
-	{2, "Lasagne", 40.00, "Vegetables, cheeses, ground meats, tomato sauce, seasonings and spices.", "./assets/images/menu-2.png", ""},
-	{3, "Butternut Pumpkin", 10.00, "Roasted pumpkin, soft herbs, toasted seeds, and a silky house dressing.", "./assets/images/menu-3.png", ""},
-	{4, "Tokusen Wagyu", 39.00, "Char-grilled wagyu, seasonal vegetables, and a warm pepper jus.", "./assets/images/menu-4.png", "New"},
-	{5, "Olivas Rellenas", 25.00, "Avocados with crab meat, red onion, and stuffed bell pepper.", "./assets/images/menu-5.png", ""},
-	{6, "Opu Fish", 49.00, "Fresh fish with aromatic spices, vegetables, and a bright citrus finish.", "./assets/images/menu-6.png", ""},
+	{1, "Greek Salad", 25.50, "Tomatoes, green bell pepper, sliced cucumber onion, olives, and feta cheese.", "./assets/images/menu-1.png", "Salads", "Seasonal"},
+	{2, "Lasagne", 40.00, "Vegetables, cheeses, ground meats, tomato sauce, seasonings and spices.", "./assets/images/menu-2.png", "Mains", ""},
+	{3, "Butternut Pumpkin", 10.00, "Roasted pumpkin, soft herbs, toasted seeds, and a silky house dressing.", "./assets/images/menu-3.png", "Starters", ""},
+	{4, "Tokusen Wagyu", 39.00, "Char-grilled wagyu, seasonal vegetables, and a warm pepper jus.", "./assets/images/menu-4.png", "Mains", "New"},
+	{5, "Olivas Rellenas", 25.00, "Avocados with crab meat, red onion, and stuffed bell pepper.", "./assets/images/menu-5.png", "Starters", ""},
+	{6, "Opu Fish", 49.00, "Fresh fish with aromatic spices, vegetables, and a bright citrus finish.", "./assets/images/menu-6.png", "Seafood", ""},
 }
 
 var (
@@ -112,7 +129,37 @@ func (s *ReservationStore) GetAll() []Reservation {
 	for _, res := range s.reservations {
 		list = append(list, res)
 	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].CreatedAt.After(list[j].CreatedAt)
+	})
 	return list
+}
+
+func (s *ReservationStore) Cancel(id string) (Reservation, bool) {
+	s.Lock()
+	defer s.Unlock()
+	res, ok := s.reservations[id]
+	if !ok {
+		return Reservation{}, false
+	}
+	res.Status = "CANCELLED"
+	s.reservations[id] = res
+	return res, true
+}
+
+func (s *ReservationStore) Stats() (total int, pending int, cancelled int) {
+	s.RLock()
+	defer s.RUnlock()
+	for _, res := range s.reservations {
+		total++
+		switch res.Status {
+		case "CANCELLED":
+			cancelled++
+		case "PENDING":
+			pending++
+		}
+	}
+	return total, pending, cancelled
 }
 
 // Cache implements a simple thread-safe TTL cache
@@ -171,6 +218,56 @@ func (c *TTLCache) startCleanupTimer(interval time.Duration) {
 		}
 		c.Unlock()
 	}
+}
+
+type rateLimitBucket struct {
+	Count     int
+	ResetTime time.Time
+}
+
+type RateLimiter struct {
+	sync.Mutex
+	limit   int
+	window  time.Duration
+	buckets map[string]rateLimitBucket
+}
+
+func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+	return &RateLimiter{
+		limit:   limit,
+		window:  window,
+		buckets: make(map[string]rateLimitBucket),
+	}
+}
+
+func (rl *RateLimiter) Allow(key string) bool {
+	now := time.Now()
+	rl.Lock()
+	defer rl.Unlock()
+
+	bucket := rl.buckets[key]
+	if bucket.ResetTime.IsZero() || now.After(bucket.ResetTime) {
+		rl.buckets[key] = rateLimitBucket{Count: 1, ResetTime: now.Add(rl.window)}
+		return true
+	}
+	if bucket.Count >= rl.limit {
+		return false
+	}
+	bucket.Count++
+	rl.buckets[key] = bucket
+	return true
+}
+
+func clientIP(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 // ==========================================
@@ -287,11 +384,15 @@ func MethodMiddleware(methods ...string) Middleware {
 	}
 }
 
-func RateLimiterMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	// A basic representation of a token bucket rate limiter logic could go here.
-	// For simplicity, we just pass through, but this demonstrates complex architectural hooks.
-	return func(w http.ResponseWriter, r *http.Request) {
-		next(w, r)
+func RateLimiterMiddleware(limiter *RateLimiter) Middleware {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !limiter.Allow(clientIP(r)) {
+				writeError(w, http.StatusTooManyRequests, "too many requests, please slow down")
+				return
+			}
+			next(w, r)
+		}
 	}
 }
 
@@ -348,6 +449,8 @@ type AppConfig struct {
 	MenuCache *TTLCache
 	ResStore  *ReservationStore
 	Broker    *SSEBroker
+	Limiter   *RateLimiter
+	StartedAt time.Time
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
@@ -396,6 +499,43 @@ func validateReservation(res Reservation) error {
 	return nil
 }
 
+func filterMenuItems(r *http.Request) []MenuItem {
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	category := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("category")))
+	sortMode := strings.TrimSpace(r.URL.Query().Get("sort"))
+
+	items := make([]MenuItem, 0, len(menuItems))
+	for _, item := range menuItems {
+		if query != "" {
+			searchTarget := strings.ToLower(item.Name + " " + item.Description + " " + item.Badge + " " + item.Category)
+			if !strings.Contains(searchTarget, query) {
+				continue
+			}
+		}
+		if category != "" && strings.ToLower(item.Category) != category {
+			continue
+		}
+		items = append(items, item)
+	}
+
+	switch sortMode {
+	case "price_asc":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Price < items[j].Price
+		})
+	case "price_desc":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Price > items[j].Price
+		})
+	case "name":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Name < items[j].Name
+		})
+	}
+
+	return items
+}
+
 // simulate heavy DB processing for Reservations
 func (app *AppConfig) HandleReservation(w http.ResponseWriter, r *http.Request) {
 	var res Reservation
@@ -424,24 +564,71 @@ func (app *AppConfig) HandleReservation(w http.ResponseWriter, r *http.Request) 
 }
 
 func (app *AppConfig) HandleMenu(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "menu:" + r.URL.RawQuery
 	// Check Cache first
-	if cachedRes, found := app.MenuCache.Get("full_menu"); found {
+	if cachedRes, found := app.MenuCache.Get(cacheKey); found {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cachedRes.([]byte))
 		return
 	}
 
-	bytes, err := json.Marshal(menuItems)
+	bytes, err := json.Marshal(filterMenuItems(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load menu")
 		return
 	}
-	
+
 	// Set to cache for 1 minute
-	app.MenuCache.Set("full_menu", bytes, menuCacheTTL)
+	app.MenuCache.Set(cacheKey, bytes, menuCacheTTL)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(bytes)
+}
+
+func (app *AppConfig) HandleReservations(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, app.ResStore.GetAll())
+}
+
+func (app *AppConfig) HandleReservationByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/reservations/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusNotFound, "reservation not found")
+		return
+	}
+
+	cancelled, ok := app.ResStore.Cancel(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "reservation not found")
+		return
+	}
+
+	event := SSEEvent{
+		Type:    "RESERVATION_UPDATE",
+		Message: fmt.Sprintf("Reservation %s was cancelled.", cancelled.ID),
+	}
+	msg, _ := json.Marshal(event)
+	app.Broker.Notifier <- msg
+
+	writeJSON(w, http.StatusOK, cancelled)
+}
+
+func (app *AppConfig) HandleStats(w http.ResponseWriter, r *http.Request) {
+	total, pending, cancelled := app.ResStore.Stats()
+	writeJSON(w, http.StatusOK, AppStats{
+		MenuItems:        len(menuItems),
+		Reservations:    total,
+		PendingBookings: pending,
+		Cancelled:       cancelled,
+		StartedAt:       app.StartedAt,
+		UptimeSeconds:   int64(time.Since(app.StartedAt).Seconds()),
+	})
+}
+
+func (app *AppConfig) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, HealthResponse{
+		Status:    "ok",
+		Timestamp: time.Now().UTC(),
+	})
 }
 
 // Rule-based NLP Engine emulator
@@ -520,6 +707,8 @@ func main() {
 		MenuCache: NewTTLCache(5 * time.Minute),
 		ResStore:  NewReservationStore(),
 		Broker:    NewSSEBroker(),
+		Limiter:   NewRateLimiter(120, time.Minute),
+		StartedAt: time.Now().UTC(),
 	}
 
 	// Start asynchronous background tasks
@@ -548,13 +737,14 @@ func main() {
 		app.HandleMenu,
 		CORSHeaders,
 		LoggingMiddleware,
-		RateLimiterMiddleware,
+		RateLimiterMiddleware(app.Limiter),
 		MethodMiddleware(http.MethodGet, http.MethodOptions),
 	))
 	mux.HandleFunc("/api/reservation", Chain(
 		app.HandleReservation,
 		CORSHeaders,
 		LoggingMiddleware,
+		RateLimiterMiddleware(app.Limiter),
 		MethodMiddleware(http.MethodPost, http.MethodOptions),
 		AuthMiddleware,
 	))
@@ -562,7 +752,37 @@ func main() {
 		app.HandleChat,
 		CORSHeaders,
 		LoggingMiddleware,
+		RateLimiterMiddleware(app.Limiter),
 		MethodMiddleware(http.MethodPost, http.MethodOptions),
+	))
+	mux.HandleFunc("/api/reservations", Chain(
+		app.HandleReservations,
+		CORSHeaders,
+		LoggingMiddleware,
+		RateLimiterMiddleware(app.Limiter),
+		MethodMiddleware(http.MethodGet, http.MethodOptions),
+		AuthMiddleware,
+	))
+	mux.HandleFunc("/api/reservations/", Chain(
+		app.HandleReservationByID,
+		CORSHeaders,
+		LoggingMiddleware,
+		RateLimiterMiddleware(app.Limiter),
+		MethodMiddleware(http.MethodDelete, http.MethodOptions),
+		AuthMiddleware,
+	))
+	mux.HandleFunc("/api/stats", Chain(
+		app.HandleStats,
+		CORSHeaders,
+		LoggingMiddleware,
+		RateLimiterMiddleware(app.Limiter),
+		MethodMiddleware(http.MethodGet, http.MethodOptions),
+	))
+	mux.HandleFunc("/api/health", Chain(
+		app.HandleHealth,
+		CORSHeaders,
+		LoggingMiddleware,
+		MethodMiddleware(http.MethodGet, http.MethodOptions),
 	))
 
 	// Server-Sent Events Endpoint (Protected)

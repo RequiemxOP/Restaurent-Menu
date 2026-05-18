@@ -539,6 +539,33 @@
 
           <h2 class="headline-1 section-title text-center">Delicious Menu</h2>
 
+          <div class="menu-tools" aria-label="menu filters">
+            <label class="input-wrapper">
+              <input type="search" id="menu-search" class="input-field" placeholder="Search dishes">
+            </label>
+
+            <label class="input-wrapper">
+              <select id="menu-category" class="input-field">
+                <option value="">All categories</option>
+                <option value="Salads">Salads</option>
+                <option value="Starters">Starters</option>
+                <option value="Mains">Mains</option>
+                <option value="Seafood">Seafood</option>
+              </select>
+            </label>
+
+            <label class="input-wrapper">
+              <select id="menu-sort" class="input-field">
+                <option value="">Featured</option>
+                <option value="name">Name</option>
+                <option value="price_asc">Price low to high</option>
+                <option value="price_desc">Price high to low</option>
+              </select>
+            </label>
+
+            <p class="menu-stats" id="menu-stats" aria-live="polite"></p>
+          </div>
+
           <ul class="grid-list" id="menu-list">
 
             <li>
@@ -845,6 +872,14 @@
               <textarea name="message" placeholder="Message" autocomplete="off" class="input-field"></textarea>
 
               <p class="reservation-status" id="reservation-status" aria-live="polite"></p>
+
+              <div class="reservation-admin">
+                <button type="button" class="btn btn-primary" id="refresh-reservations">
+                  <span class="text text-1">Refresh Bookings</span>
+                  <span class="text text-2" aria-hidden="true">Refresh Bookings</span>
+                </button>
+                <ul class="reservation-list" id="reservation-list" aria-live="polite"></ul>
+              </div>
 
               <button type="submit" class="btn btn-secondary">
                 <span class="text text-1">Book A Table</span>
